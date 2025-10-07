@@ -1,8 +1,11 @@
-#include "Player.h"
-#include "ZombieArena.h"
 #include <SFML/Graphics.hpp>
 #include <iostream>
+#include "Player.h"
+#include "ZombieArena.h"
 #include "TextureHolder.h"
+#include "Bullet.h"
+#include "Pickup.h"
+#include <sstream>
 
 int main()
 {
@@ -92,11 +95,53 @@ int main()
     //rect.setPosition(player.getCenter());
     //rect.setFillColor(sf::Color::Yellow);
 
+    // Bullets
+    Bullet bullets[100];
+    int currentBullet = 0;
+    int bulletsSpare = 24;
+    int bulletsInClip = 6;
+    int clipSize = 6;
+    float fireRate = 5;
+
+    // When was the fire button last pressed?
+    sf::Time lastPressed;
+    // R key reloads the clip - code for that is in the game loop in if PLAYING
+
+    
+    // Replace the mouse pointer with a cross hair
+    window.setMouseCursorVisible(false);
+    sf::Sprite spriteCrossHair(TextureHolder::GetTexture("graphics/crosshair.png"));
+    spriteCrossHair.setOrigin(sf::Vector2f(25, 25));
+
+
+
+    // Creating a couple of pickups
+    Pickup healthPickup(1);
+    Pickup ammoPickup(2);
+
+
+
+
+    // Setting up the score
+    int score = 0;
+    int highScore = 0;
+
+
+
 
 
     // The main game loop
     while (window.isOpen())
     {
+
+
+        static State lastState = State::GAME_OVER;
+        if (state != lastState)
+        {
+            std::cout << "State changed to: " << (int)state << std::endl;
+            lastState = state;
+        }
+
 
         // Handle input
 
@@ -138,6 +183,27 @@ int main()
 
                 if (state == State::PLAYING)
                 {
+                    // Reloading
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R))
+                    {
+                        if (bulletsSpare >= clipSize)
+                        {
+                            // Plenty of bullets, reload!
+                            bulletsInClip = clipSize;
+                            bulletsSpare -= clipSize;
+                        }
+                        else if (bulletsSpare > 0)
+                        {
+                            // only a few bullets left
+                            bulletsInClip = bulletsSpare;
+                            bulletsSpare = 0;
+                        }
+                        else
+                        {
+                            std::cout << "Bullets are over!" << std::endl;
+                            // more here soon!
+                        }
+                    }
 
                 }
             } // end of if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>())
@@ -196,6 +262,24 @@ int main()
                 player.stopMovingRight();
             }
 
+
+            // Firing a bullet
+            if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+            {
+                if (gameTimeTotal.asMilliseconds() - lastPressed.asMilliseconds() > 1000 / fireRate && bulletsInClip > 0)
+                {
+                    bullets[currentBullet].shoot(player.getCenter().x, player.getCenter().y, mouseWorldPosition.x, mouseWorldPosition.y);
+                    currentBullet++;
+                    if (currentBullet > 99)
+                    {
+                        currentBullet = 0;
+                    }
+                    lastPressed = gameTimeTotal;
+                    bulletsInClip--;
+                }
+            } // End firing a bullet
+
+
         } // end of WASD while playing
 
 
@@ -235,6 +319,7 @@ int main()
             // Handling playing state
             if (state == State::PLAYING)
             {
+                std::cout << "===== INITIALIZING GAME =====" << std::endl;
                 // Prepare the level
                 arena.size.x = 500;
                 arena.size.y = 500;
@@ -246,6 +331,20 @@ int main()
 
                 // Spawning the player in the middle of the arena
                 player.spawn(arena, sf::Vector2u(resolution), tileSize);
+
+
+                // Configuring the pickups
+                healthPickup.setArena(arena);
+                ammoPickup.setArena(arena);
+                std::cout << "After setArena - Health spawned: " << healthPickup.isSpawned() << std::endl;
+                std::cout << "After setArena - Ammo spawned: " << ammoPickup.isSpawned() << std::endl;
+
+
+                // Debug
+                std::cout << "Arena: " << arena.position.x << ", " << arena.position.y
+                    << " Size: " << arena.size.x << "x" << arena.size.y << std::endl;
+                std::cout << "Player position: " << player.getCenter().x << ", " << player.getCenter().y << std::endl;
+                std::cout << "View center: " << mainView.getCenter().x << ", " << mainView.getCenter().y << std::endl;
 
 
                 // Creating a horde of Zombies
@@ -286,6 +385,10 @@ int main()
             // based co-ordinates of main view
             mouseWorldPosition = window.mapPixelToCoords(sf::Mouse::getPosition(), mainView);
 
+            // Set the crosshair to the mouse world location
+            spriteCrossHair.setPosition(mouseWorldPosition);
+
+
 
             // Update the player
             player.update(dtAsSeconds, sf::Mouse::getPosition());
@@ -301,7 +404,7 @@ int main()
 
 
             // Looping through each Zombie and updating them
-            std::cout << "Starting zombie update loop" << std::endl;
+            // std::cout << "Starting zombie update loop" << std::endl;
             for (int i = 0; i < numZombies; ++i)
             {
                 if (zombies[i].isAlive())
@@ -309,10 +412,121 @@ int main()
                     zombies[i].update(dt.asSeconds(), playerPosition);
                 }
             }
-            std::cout << "Finished zombie update loop" << std::endl;
+            // std::cout << "Finished zombie update loop" << std::endl;
+
+            // Update any bullets in-flight
+            for (int i = 0; i < 100; i++)
+            {
+                if (bullets[i].isInFlight())
+                {
+                    bullets[i].update(dtAsSeconds);
+                }
+            }
+
+            // Update the pickups
+            healthPickup.update(dtAsSeconds);
+            ammoPickup.update(dtAsSeconds);
 
 
 
+
+            // Collision detection
+            // Have any zombies been shot?
+
+            // Looping through bullets
+            for (int i = 0; i < 100; i++)
+            {
+                // Looping through the number of zombies
+                for (int j = 0; j < numZombies; j++)
+                {
+                    // Check to see if the bullet is in flight and the zombie is alive
+                    if (bullets[i].isInFlight() && zombies[j].isAlive())
+                    {
+                        // Check to see if the bullet has intersected with the Zombie
+                        if (bullets[i].getPosition().findIntersection(zombies[j].getPosition()))
+                        {
+                            // stop the bullet
+                            bullets[i].stop();
+
+                            // Register the hit and see if it was a kill
+                            if (zombies[j].hit())
+                            {
+                                // not just a hit but a kill too
+                                score += 10;
+                                if (score >= highScore)
+                                {
+                                    highScore = score;
+                                }
+                                
+                                // Reducing the number of zombies
+                                numZombiesAlive--;
+
+                                // When all the zombies are dead, level up state
+                                if (numZombiesAlive == 0)
+                                {
+                                    state = State::LEVELING_UP;
+                                }
+                            } // end of if (zombies[j].hit())
+                        } // end of if (bullets[i].getPosition().findIntersection(zombies[j].getPosition()))
+                    } // end of if (bullets[i].isInFlight() && zombies[j].isAlive())
+                } // end of for (int j = 0; j < numZombies; j++)
+            } // end of for (int i = 0; i < 100; i++)
+
+
+
+
+            // Collision detection with the player
+            for (int i = 0; i < numZombies; i++)
+            {
+                if (player.getPosition().findIntersection(zombies[i].getPosition()) && zombies[i].isAlive())
+                {
+                    if (player.hit(gameTimeTotal))
+                    {
+                        // more stuff to come here
+                    }
+
+                    if (player.getHealth() <= 0)
+                    {
+                       state = State::GAME_OVER;
+                    }
+                }
+            } // End collision detection with player
+
+
+            /* Collision detection with the pickups */ 
+            /*          ********************        */
+            // Detecting health pickup colission
+            if (player.getPosition().findIntersection(healthPickup.getPosition()) && healthPickup.isSpawned())
+            {
+                player.increaseHealthLevel(healthPickup.gotIt());
+            }
+
+            // Detecting ammo pickup collision
+            if (player.getPosition().findIntersection(ammoPickup.getPosition()) && ammoPickup.isSpawned())
+            {
+                bulletsSpare += ammoPickup.gotIt();
+            }
+
+    
+
+
+
+
+
+
+            // Add these lines:
+            if (healthPickup.isSpawned())
+            {
+                std::cout << "Health pickup position: " << healthPickup.getSprite().getPosition().x
+                    << ", " << healthPickup.getSprite().getPosition().y << std::endl;
+            }
+            if (ammoPickup.isSpawned())
+            {
+                std::cout << "Ammo pickup position: " << ammoPickup.getSprite().getPosition().x
+                    << ", " << ammoPickup.getSprite().getPosition().y << std::endl;
+            }
+            std::cout << "Player position: " << player.getCenter().x << ", " << player.getCenter().y << std::endl;
+            std::cout << "View center: " << mainView.getCenter().x << ", " << mainView.getCenter().y << std::endl;
 
 
         } // end of updating the frames with if (state == State::PLAYING)
@@ -342,10 +556,18 @@ int main()
             // Drawing Zombies
             for (int i = 0; i < numZombies; i++)
             {
-                std::cout << "Drawing zombie " << i << ", alive: " << zombies[i].isAlive() << std::endl;
+                // std::cout << "Drawing zombie " << i << ", alive: " << zombies[i].isAlive() << std::endl;
                 window.draw(zombies[i].getSprite());
             }
 
+
+            for (int i = 0; i < 100; i++)
+            {
+                if (bullets[i].isInFlight())
+                {
+                    window.draw(bullets[i].getShape());
+                }
+            }
 
 
             // testing
@@ -361,6 +583,24 @@ int main()
             // Draw the player
             window.draw(player.getSprite());
             //window.draw(rect);
+
+
+
+            // Draw the pickups if currently spawned
+            if (ammoPickup.isSpawned())
+            {
+                window.draw(ammoPickup.getSprite());
+            }
+
+            if (healthPickup.isSpawned())
+            {
+                window.draw(healthPickup.getSprite());
+            }
+
+
+
+            // Draw crosshair
+            window.draw(spriteCrossHair);
 
             
         }
