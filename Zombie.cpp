@@ -8,8 +8,8 @@ Zombie::Zombie()
 	: m_Speed(0)
 	, m_Health(0)
 	, m_Alive(false)
-	, m_Texture()
-	, m_Sprite(m_Texture)
+	, m_Texture(nullptr)
+	, m_Sprite(std::nullopt)
 { }
 
 void Zombie::spawn(float startX, float startY, int type, int seed)
@@ -20,27 +20,26 @@ void Zombie::spawn(float startX, float startY, int type, int seed)
 	{
 	case 0:
 		// Bloater
-		m_Texture = TextureHolder::GetTexture("./graphics/bloater.png");
+		m_Texture = &TextureHolder::GetTexture("./graphics/bloater.png");
 		m_Speed = BLOATER_SPEED;
 		m_Health = BLOATER_HEALTH;
 		break;
 	case 1:
 		// Chaser
-		m_Texture = TextureHolder::GetTexture("./graphics/chaser.png");
+		m_Texture = &TextureHolder::GetTexture("./graphics/chaser.png");
 		m_Speed = CHASER_SPEED;
 		m_Health = CHASER_HEALTH;
 		break;
 	case 2:
 		// Crawler
-		m_Texture = TextureHolder::GetTexture("./graphics/crawler.png");
+		m_Texture = &TextureHolder::GetTexture("./graphics/crawler.png");
 		m_Speed = CRAWLER_SPEED;
 		m_Health = CRAWLER_HEALTH;
 		break;
 	} // end of switch
 
 	// Reconstructing the sprite
-	m_Sprite.~Sprite();
-	new (&m_Sprite) sf::Sprite(m_Texture);
+	m_Sprite.emplace(*m_Texture);
 
 
 	// Modify the speed to make the zombie unique
@@ -61,11 +60,11 @@ void Zombie::spawn(float startX, float startY, int type, int seed)
 	m_Position.y = startY;
 
 	// set its origin to its center
-	m_Sprite.setOrigin(sf::Vector2f(25, 25));
+	m_Sprite->setOrigin(sf::Vector2f(25, 25));
 
 
 	// set its position
-	m_Sprite.setPosition(m_Position);
+	m_Sprite->setPosition(m_Position);
 
 } // End of spawn
 
@@ -77,7 +76,10 @@ bool Zombie::hit()
 	{
 		// zombie dead
 		m_Alive = false;
-		m_Sprite.setTexture(TextureHolder::GetTexture("./graphics/blood.png"));
+		const sf::Texture* bloodTexture = &TextureHolder::GetTexture("graphics/blood.png");
+		m_Sprite.emplace(*bloodTexture);
+		m_Sprite->setOrigin(sf::Vector2f(25, 25));
+		m_Sprite->setPosition(m_Position);
 		return true;
 	}
 	// Else return false
@@ -93,12 +95,21 @@ bool Zombie::isAlive() const
 
 sf::FloatRect Zombie::getPosition()
 {
-	return m_Sprite.getGlobalBounds();
+	
+	if (m_Sprite.has_value())
+	{
+		return m_Sprite->getGlobalBounds();
+	}
+	else
+	{
+		return sf::FloatRect({ 0,0 }, { 0,0 });
+	}
+	
 }
 
 const sf::Sprite& Zombie::getSprite() const
 {
-	return m_Sprite;
+	return *m_Sprite;
 }
 
 
@@ -130,8 +141,8 @@ void Zombie::update(float elapsedTime, sf::Vector2f playerLocation)
 	}
 
 	// Move the sprite
-	m_Sprite.setPosition(m_Position);
+	m_Sprite->setPosition(m_Position);
 
 	// Face the sprite in the right direction
-	m_Sprite.setRotation(sf::radians(atan2(playerY - m_Position.y, playerX - m_Position.x)));
+	m_Sprite->setRotation(sf::radians(atan2(playerY - m_Position.y, playerX - m_Position.x)));
 }

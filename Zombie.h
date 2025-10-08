@@ -26,11 +26,11 @@ private:
 
 
 	// A texture for the zombie
-	sf::Texture m_Texture;
+	const sf::Texture* m_Texture;
 
 
 	// A sprite for the zombie
-	sf::Sprite m_Sprite;
+	std::optional<sf::Sprite> m_Sprite;
 
 
 	// How fast can this one run or crawl?
